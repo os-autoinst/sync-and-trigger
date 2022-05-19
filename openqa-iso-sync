@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Setting the switch 'only_complete' to '1' will not trigger new builds to be
+# tested as long as not all products within one OBS project are done building
+# and fully published. This is done to ensure that no "incomplete builds" are
+# tested on openQA.opensuse.org where only media for some architectures are
+# tested because the others failed to complete their build or where not yet
+# finished when a first medium was triggering tests.
+only_complete="${only_complete:-"1"}"
+
+if [ -w / ]; then
+    echo "don't run this as root" >&2
+    exit 1
+fi
+
+if [ -z "$LOCKED" ]; then
+    exec withlock -q /var/lib/openqa/.config/openqa/openqa-iso-sync.lock env LOCKED=1 "$0" "$@"
+    exit 1
+fi
+cd /run
+export RSYNC_PASSWORD=ALWAYS_TESTED
+[ $# -gt 0 ] || set -- tumbleweed
+echo -n "rsync start at " >> /var/log/openqa_rsync.log
+date >> /var/log/openqa_rsync.log
+
+. $(dirname $0)/openqa-iso-sync-common
+
+label_tw='openSUSE:Factory'
+label_leap='openSUSE:Leap'
+const_label='ToTest'
+
+for p in "$@"; do
+    obs_prj=
+    postfix=
+
+    case $p in
+        # Tumbleweed and ports
+        tumbleweed_ppc64)
+            obs_prj=${label_tw}:PowerPC:${const_label}
+            postfix='?package=000product'
+        ;;
+        tumbleweed_arm)
+            obs_prj=${label_tw}:ARM:${const_label}
+            postfix='?package=000product'
+        ;;
+        tumbleweed_s390x)
+            obs_prj=${label_tw}:zSystems:${const_label}
+        ;;
+        tumbleweed_*)
+            obs_prj=${label_tw}:${const_label}
+            postfix='?package=000product'
+        ;;
+        # Leap 15 and ports
+        15)
+            obs_prj=${label_leap}:15.0:${const_label}
+            postfix='?package=000product'
+        ;;
+        15.1_images)
+            obs_prj=${label_leap}:15.1:Images:${const_label}
+        ;;
+        15.1_arm_images)
+            obs_prj=${label_leap}:15.1:ARM:Images:${const_label}
+        ;;
+        15.2_arm)
+            obs_prj=${label_leap}:15.2:ARM:${const_label}
+            postfix='?package=000product'
+        ;;
+        15.2_ppc)
+            obs_prj=${label_leap}:15.2:PowerPC:${const_label}
+        ;;
+        15.2_images)
+            obs_prj=${label_leap}:15.2:Images:${const_label}
+        ;;
+        15.2_arm_images)
+            obs_prj=${label_leap}:15.2:ARM:Images:${const_label}
+        ;;
+        15.2*)
+            obs_prj=${label_leap}:15.2:${const_label}
+            postfix='?package=000product'
+        ;;
+    esac
+
+    if [ -n "$obs_prj" ] && [ "$only_complete" = "1" ]; then
+        # If any component is "dirty" we should not sync. Also, we are
+        # looking for "published" but have to accept that some
+        # repositories might be "broken" or have any other acceptable
+        # non-blocking state
+        if ! is_complete $obs_prj "o3" $postfix; then
+            echo "$p is not published yet, skipping" >> /var/log/openqa_rsync.log
+            continue
+        fi
+    fi
+
+    ${0%/*}/rsync.pl \
+        --host localhost \
+        --repourl http://openqa.opensuse.org/assets/repo \
+        $p >> /var/log/openqa_rsync.log 2>&1
+    echo -n "rsync of $p done at " >> /var/log/openqa_rsync.log
+    date >> /var/log/openqa_rsync.log
+
+done

@@ -1,0 +1,40 @@
+---
+# yamllint disable rule:line-length
+.test: &test_base
+  image: registry.opensuse.org/home/okurz/container/containers/tumbleweed:openqa-scripts
+  before_script:
+    - sed "s/^requires '\(.*\)'.*\$/'perl(\1)'/" cpanfile | xargs zypper -n in -C
+
+test.sle15_sp2:
+  <<: *test_base
+  script: make test.sle15_sp2
+
+include:
+  - project: 'openqa/ci'
+    file: '/ci/ssh-deploy.yml'
+
+.deploy: &deploy
+  extends: .setup_ssh
+  stage: deploy
+  only:
+    - master@openqa/scripts
+  allow_failure: false
+  script:
+    - git push $TARGET:/opt/openqa-scripts HEAD:master
+    - ssh $TARGET "git -C /opt/openqa-scripts reset --hard --quiet master"
+
+test.tumbleweed:
+  extends: .setup_ssh
+  script:
+    - git push o3:/opt/openqa-scripts HEAD:refs/heads/$CI_COMMIT_SHA
+    - ssh o3 "cd \$(mktemp -d) && git clone --branch $CI_COMMIT_SHA /opt/openqa-scripts . && git -C /opt/openqa-scripts branch -D $CI_COMMIT_SHA && \$(grep RSYNC_PASSWORD openqa-iso-sync) && make test.tumbleweed; ret=$?; echo rm -rf $PWD; exit $ret"
+
+deploy to o3:
+  extends: .deploy
+  variables:
+    TARGET: o3
+
+deploy to osd:
+  extends: .deploy
+  variables:
+    TARGET: openqa.suse.de

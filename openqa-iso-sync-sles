@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Setting the switch 'only_complete' to '1' will not trigger new builds to be
+# tested as long as not all products within one OBS project are done building
+# and fully published. This is done to ensure that no "incomplete builds" are
+# tested on openQA.suse.de where only media for some architectures are tested
+# because the others failed to complete their build or where not yet finished
+# when a first medium was triggering tests.
+only_complete="${only_complete:-"1"}"
+
+# Setting the switch 'wait_for_test_completion' to '1' will not trigger new
+# builds to be tested as long as a previous build is still under test.
+# However, keep in mind that it might still be triggered later as soon as
+# testing of the previous one finished. Only if OBS would yield another new
+# build the formerly new, that was never triggered, is skipped and therefore
+# never triggered. This switch can be used to prevent incomplete build test
+# results.
+wait_for_test_completion="${wait_for_test_completion:-"0"}"
+
+# Setting the switch 'no_obsolete' to '1' will not obsolete jobs of old builds
+# but keep them running.
+#
+# See rsync.pl option '--no-obsolete' for details.
+no_obsolete="${no_obsolete:-"0"}"
+
+# Setting the switch 'deprio' to '1' will not immediately obsolete jobs of old
+# builds but rather deprioritize them up to a configurable limit of priority.
+# See rsync.pl option '--deprioritize-or-cancel' for details.
+deprio="${deprio:-"1"}"
+
+[ $# -gt 0 ] || set -- sle15_sp2
+date >> /var/log/openqa_rsync.log
+# rsync file transfer should not exceed lockfile timeout
+if ! lockfile -r 1 -l 7200 /var/lib/openqa/.config/openqa/openqa-iso-sync.lock; then
+    echo "can't get lock file"
+    exit 0
+fi
+
+. $(dirname $0)/openqa-iso-sync-common
+
+rsync_opts="${rsync_opts:-""}"
+
+for p in "$@"; do
+    obs_prj=
+    case $p in
+        sle12_sp?_rt)
+            version_major=12
+            version_minor=${p:8:1}
+            obs_prj=Devel:RTE:SLE${version_major}SP${version_minor}
+            ;;
+        sle15_sp*)
+            version_major=15
+            version_minor=${p/sle15_sp/}
+            obs_prj=SUSE:SLE-${version_major}-SP${version_minor}:GA:TEST
+            ;;
+        sle15*)
+            version_major=15
+            obs_prj=SUSE:SLE-${version_major}:GA:TEST
+    ;;
+    esac
+    if test -n "$obs_prj"; then
+        if [ "$only_complete" = "1" ]; then
+            # If any component is "dirty" we should not sync. Also, we are
+            # looking for "published" but have to accept that some
+            # repositories might be "broken" or have any other acceptable
+            # non-blocking state
+            if ! is_complete $obs_prj; then
+                continue
+            fi
+        fi
+        if [ "$wait_for_test_completion" = "1" ]; then
+            group_id=$(curl -s https://openqa.suse.de/api/v1/parent_groups | python -c "import sys, json; print([i for i in json.load(sys.stdin) if '${version_major} SP${version_minor}' in i['name']][0]['id'])")
+            curl -s https://openqa.suse.de/parent_group_overview/${group_id}.json?limit_builds=1 | python -c "import sys, json; sys.exit(not sum([i['unfinished'] for i in json.load(sys.stdin)['result'].values()]) < 10)"; finished=$?
+            if [ "$finished" = "0" ]; then
+                echo "last build is still under testing, skipping new build."
+                continue
+            fi
+        fi
+        if [ "$no_obsolete" = "1" ]; then
+            echo "Configured to not obsolete jobs from previous builds"
+            rsync_opts="$rsync_opts --no-obsolete"
+        fi
+        if [ "$deprio" = "1" ]; then
+            echo "Configured to deprioritize or cancel jobs from previous builds"
+            rsync_opts="$rsync_opts --deprioritize-or-cancel"
+        fi
+        rsync -a4 rsync://dist.suse.de/trigger-repos-sync/${obs_prj}_images /var/lib/openqa/.config/openqa/${p}_images
+        if ! test /var/lib/openqa/.config/openqa/${p}_images -nt /var/lib/openqa/.config/openqa/${p}_images.old; then
+            continue
+        fi
+        mv /var/lib/openqa/.config/openqa/${p}_images /var/lib/openqa/.config/openqa/${p}_images.old
+    fi
+    ${0%/*}/rsync.pl \
+           --host openqa.suse.de \
+           --verbose \
+           $rsync_opts \
+           $p >> /var/log/openqa_rsync.log 2>&1
+done
+
+rm -f /var/lib/openqa/.config/openqa/openqa-iso-sync.lock

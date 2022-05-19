@@ -1,0 +1,5 @@
+#!/bin/bash
+[ $# -gt 0 ] || set -- sle15_sp2_jeos
+withlock -q /var/lib/openqa/.config/openqa/openqa-iso-sync.lock ${0%/*}/rsync.pl \
+        --host localhost \
+        "$@"

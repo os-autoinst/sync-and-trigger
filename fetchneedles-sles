@@ -1,0 +1,17 @@
+#!/bin/bash
+set -e
+
+echo "opensuse ..."
+/usr/share/openqa/script/fetchneedles "$@"
+
+export dist="opensuse"
+export product="sle"
+export giturl="git://github.com/os-autoinst/os-autoinst-distri-opensuse.git"
+export branch="master"
+
+export needles_separate=1
+export needles_giturl="https://gitlab.suse.de/openqa/os-autoinst-needles-sles.git"
+export needles_branch="master"
+
+echo "sle ..."
+/usr/share/openqa/script/fetchneedles "$@"

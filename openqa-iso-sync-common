@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# If any component is "dirty" we should not sync. Also, we are
+# looking for "published" but have to accept that some
+# repositories might be "broken" or have any other acceptable
+# non-blocking state
+function is_complete {
+  if [ "$2" == "o3" ]; then
+      server="https://api.opensuse.org/public/build/$1/_result$3"
+  else
+      server=$(echo https://api.suse.de/public/build/$1/_result?{package=000product,code})
+  fi
+
+  ibs_status=$(for i in $server; do curl -s $i ; done)
+  echo "${ibs_status}" | grep dirty; clean=$?
+  if [ "$clean" = "0" ]; then
+      echo "build in progress, skipping."
+      return 1
+  fi
+
+  echo "$ibs_status" | grep 'repository="images"' | grep -v 'published'; published=$?
+  if [ "$published" = "0" ]; then
+      echo "publishing in progress, skipping."
+      return 1
+  fi
+  return 0
+}
