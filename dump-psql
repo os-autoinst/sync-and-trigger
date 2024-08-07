@@ -2,4 +2,4 @@
 # must run as geekotest
 
 pg_dump -Fc -c openqa  -f ~/SQL-DUMPS/`date -Idate`.dump
-find ~/SQL-DUMPS/ -mtime +7 -print0 | xargs --no-run-if-empty -0 rm -v
+find ~/SQL-DUMPS/ -mtime +7 -print0 | xargs --no-run-if-empty -0 rm
