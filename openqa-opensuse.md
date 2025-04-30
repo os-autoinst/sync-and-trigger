@@ -2,12 +2,16 @@
 
 ## SSH access
 
-ssh access is only possible via the opensuse proxy server. Add the following
-snippet to your ~/.ssh/config file:
+ssh access is possible via `ariel.dmz-prg2.suse.org`. See the following snippet for your
+`~/.ssh/config` file:
 
-    Host                 openqa.opensuse.org
-    HostName             proxy-opensuse.suse.de
-    Port                 2215
+```
+Host ariel
+  HostName ariel.dmz-prg2.suse.org
+
+Host *.opensuse.org
+  ProxyJump ariel
+```
 
 There is no direct root access. You need a local user with public key authentication.
 
