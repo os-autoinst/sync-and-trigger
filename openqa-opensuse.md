@@ -44,4 +44,4 @@ restart dnsmasq and set the new worker to DHCP
 
 ## Further reading
 
-[innerweb wiki](https://wiki.microfocus.net/index.php/OpenQA)
+* [Our wiki](https://progress.opensuse.org/projects/openqav3/wiki/Wiki#o3-openqaopensuseorg)
